@@ -196,8 +196,8 @@ async def ws_router(websocket: WebSocket):
                     if len(str(body)) < MAX_STROKE_PAYLOAD_BYTES:
                         room["history"].append(body)
                         # Ensure replay structural container array is safely instantiated before append pipelines
-                        if "replay_store" not in room:
-                            room["replay_store"] = []
+                        # if "replay_store" not in room:
+                        #     room["replay_store"] = []
                         room["replay_store"].append(body)
                         await send_broadcast(r_id, {"type": "stroke", "payload": body}, skip_id=p_id)
 
