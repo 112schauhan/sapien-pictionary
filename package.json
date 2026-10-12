@@ -1,25 +1,20 @@
 {
   "name": "sapien-pictionary",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Real-time multiplayer pictionary (Skribbl-style) in the browser",
+  "private": true,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "concurrently \"npm run backend\" \"npm run frontend\"",
-    "backend": "cd server && .venv\\Scripts\\python -m uvicorn main:app --host 127.0.0.1 --port 8000",
-    "frontend": "cd client && npm run dev"
+    "setup": "node scripts/setup.js",
+    "start": "concurrently -n server,client -c teal,magenta \"npm run backend\" \"npm run frontend\"",
+    "backend": "node scripts/run-backend.js",
+    "frontend": "npm --prefix client run dev -- --host 127.0.0.1 --port 5173",
+    "test": "echo \"No automated tests yet\""
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/112schauhan/sapien-pictionary.git"
   },
-  "keywords": [],
-  "author": "",
   "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/112schauhan/sapien-pictionary/issues"
-  },
-  "homepage": "https://github.com/112schauhan/sapien-pictionary#readme",
   "devDependencies": {
     "concurrently": "^10.0.6"
   }
