@@ -1,0 +1,26 @@
+{
+  "name": "sapien-pictionary",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "backend": "cd server && .venv\\Scripts\\python -m uvicorn main:app --host 127.0.0.1 --port 8000",
+    "frontend": "cd client && npm run dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/112schauhan/sapien-pictionary.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/112schauhan/sapien-pictionary/issues"
+  },
+  "homepage": "https://github.com/112schauhan/sapien-pictionary#readme",
+  "devDependencies": {
+    "concurrently": "^10.0.6"
+  }
+}
