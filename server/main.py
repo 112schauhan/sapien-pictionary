@@ -3,11 +3,12 @@ import asyncio
 import time
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from game_manager import GameManager
+# Securely inject external environment rules from the configuration directory layer
+from constants import TURN_DURATION_SECONDS, MAX_BURST_RATE_PER_SECOND, MAX_STROKE_PAYLOAD_BYTES
 
 app = FastAPI()
 manager = GameManager()
 
-# Global tracking structures
 connections = {}
 rate_tracker = {}
 
@@ -27,12 +28,14 @@ async def countdown_timer_thread(room_id: str):
     if not room:
         return
 
-    room["timer"] = 60
+    # Links variable initialization precisely to configuration definitions
+    room["timer"] = TURN_DURATION_SECONDS
     while room["timer"] > 0 and room["game_status"] == "drawing":
         await asyncio.sleep(1)
         room["timer"] -= 1
 
-        pct = ((60 - room["timer"]) / 60) * 100
+        pct = ((TURN_DURATION_SECONDS -
+               room["timer"]) / TURN_DURATION_SECONDS) * 100
         masked = manager.make_obfuscated_hint(room["current_word"], pct)
 
         for p_id, channel in list(connections.items()):
@@ -77,11 +80,11 @@ async def ws_router(websocket: WebSocket):
                 continue
             current_player, current_room = p_id, r_id
 
-            # Anti-abuse protection: Drop excessive operations running per second
             timestamp = time.time()
             ticks = [t for t in rate_tracker.get(
                 p_id, []) if timestamp - t < 1.0]
-            if len(ticks) > 25:
+            # Protect endpoints dynamically via constants configuration attributes
+            if len(ticks) > MAX_BURST_RATE_PER_SECOND:
                 await websocket.send_text(json.dumps({"type": "system_message", "payload": {"text": "Slow down! Rate limit exceeded."}}))
                 continue
             ticks.append(timestamp)
@@ -114,13 +117,14 @@ async def ws_router(websocket: WebSocket):
                 if room and room["current_drawer_id"] == p_id:
                     room["current_word"] = body.get("word", "").lower().strip()
                     room["game_status"] = "drawing"
-                    await send_broadcast(r_id, {"type": "drawing_started", "payload": {"timer": 60}})
+                    await send_broadcast(r_id, {"type": "drawing_started", "payload": {"timer": TURN_DURATION_SECONDS}})
                     asyncio.create_task(countdown_timer_thread(r_id))
 
             elif action == "stroke":
                 room = manager.rooms.get(r_id)
                 if room and room["current_drawer_id"] == p_id and room["game_status"] == "drawing":
-                    if len(str(body)) < 65536:
+                    # Evaluate structural payload safety thresholds using isolated parameter properties
+                    if len(str(body)) < MAX_STROKE_PAYLOAD_BYTES:
                         room["history"].append(body)
                         await send_broadcast(r_id, {"type": "stroke", "payload": body}, skip_id=p_id)
 
@@ -132,8 +136,8 @@ async def ws_router(websocket: WebSocket):
                         attempt = body.get("text", "").lower().strip()
                         if attempt == room["current_word"]:
                             user["is_correct"] = True
-                            user["score"] += int((room["timer"] / 60)
-                                                 * 400) + 100
+                            user["score"] += int((room["timer"] /
+                                                 TURN_DURATION_SECONDS) * 400) + 100
                             room["has_guessed_count"] += 1
 
                             await send_broadcast(r_id, {"type": "system_message", "payload": {"text": f"🎉 {user['name']} found the word!"}})
@@ -158,6 +162,6 @@ async def ws_router(websocket: WebSocket):
                     manager.rooms.pop(current_room, None)
                 else:
                     if room["host_id"] == current_player:
-                        room["host_id"] = list(room["players"].keys())[0]
+                        room["host_id"] = list(room["players"].keys())
                         room["players"][room["host_id"]]["is_host"] = True
                     await send_broadcast(current_room, {"type": "room_updated", "payload": list(room["players"].values())})

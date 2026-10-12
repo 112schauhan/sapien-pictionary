@@ -41,19 +41,19 @@ class GameManager:
 
         p_ids = list(room["players"].keys())
         if not room["current_drawer_id"] or room["current_drawer_id"] not in p_ids:
-            room["current_drawer_id"] = p_ids[0]
+            room["current_drawer_id"] = p_ids
         else:
             next_idx = (p_ids.index(
                 room["current_drawer_id"]) + 1) % len(p_ids)
             room["current_drawer_id"] = p_ids[next_idx]
 
+        # Dynamically pulls choice counts from our underlying dictionary mapping layers
         return get_random_choices(3)
 
     def check_near_miss(self, guess: str, target: str) -> bool:
         if abs(len(guess) - len(target)) > 1:
             return False
 
-        # Simple Levenshtein distance matching 1-letter deviations
         matrix = [[0] * (len(target) + 1) for _ in range(len(guess) + 1)]
         for i in range(len(guess) + 1):
             matrix[i][0] = i

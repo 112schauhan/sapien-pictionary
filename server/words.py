@@ -1,8 +1,5 @@
 import random
-
-WORD_BANK = ["apple", "banana", "castle", "dragon", "elephant", "guitar", "helicopter",
-             "iceberg", "jungle", "kangaroo", "lighthouse", "mountain", "ocean",
-             "penguin", "pyramid", "robot", "spaceship", "submarine", "volcano", "wizard"]
+from constants import WORD_BANK
 
 
 def get_random_choices(count: int = 3) -> list:
