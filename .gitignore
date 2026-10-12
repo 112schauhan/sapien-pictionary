@@ -1,0 +1,18 @@
+# Python artifacts
+server/.venv/
+server/__pycache__/
+*.pyc
+
+# Client compilation modules and builds
+client/node_modules/
+client/dist/
+
+# Windows OS metadata
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Node artifacts
+node_modules/
+dist/
+.env
