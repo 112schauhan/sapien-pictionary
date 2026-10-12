@@ -10,22 +10,6 @@ interface CanvasProps {
   >
 }
 
-// Define drawRawStroke ABOVE the useEffect block to resolve line 39 mutation hooks lint rules
-const drawRawStroke = (
-  ctx: CanvasRenderingContext2D | null,
-  stroke: StrokePayload,
-) => {
-  if (!ctx || !stroke.points || stroke.points.length === 0) return
-  ctx.strokeStyle = stroke.color
-  ctx.lineWidth = stroke.size
-  ctx.beginPath()
-  ctx.moveTo(stroke.points[0].x, stroke.points[0].y)
-  for (let i = 1; i < stroke.points.length; i++) {
-    ctx.lineTo(stroke.points[i].x, stroke.points[i].y)
-  }
-  ctx.stroke()
-}
-
 export const Canvas: React.FC<CanvasProps> = ({
   isDrawer,
   onStrokeEmitted,
@@ -37,7 +21,51 @@ export const Canvas: React.FC<CanvasProps> = ({
   const [isDrawing, setIsDrawing] = useState(false)
   const [brushColor, setBrushColor] = useState("#000000")
   const [brushSize, setBrushSize] = useState(4)
+  const [activeTool, setActiveTool] = useState<"pen" | "eraser">("pen")
   const localPoints = useRef<{ x: number; y: number }[]>([])
+
+  // Track client-side undo stacks locally
+  const strokeHistoryStack = useRef<StrokePayload[]>([])
+
+  const drawRawStroke = (
+    ctx: CanvasRenderingContext2D | null,
+    stroke: StrokePayload,
+  ) => {
+    if (!ctx) return
+    if (stroke.tool === "clear") {
+      ctx.fillStyle = "#ffffff"
+      ctx.fillRect(
+        0,
+        0,
+        GAME_CONSTANTS.CANVAS_DEFAULT_WIDTH,
+        GAME_CONSTANTS.CANVAS_DEFAULT_HEIGHT,
+      )
+      return
+    }
+    if (!stroke.points || stroke.points.length === 0) return
+
+    ctx.strokeStyle = stroke.tool === "eraser" ? "#ffffff" : stroke.color
+    ctx.lineWidth = stroke.size
+    ctx.beginPath()
+    ctx.moveTo(stroke.points[0].x, stroke.points[0].y)
+    for (let i = 1; i < stroke.points.length; i++) {
+      ctx.lineTo(stroke.points[i].x, stroke.points[i].y)
+    }
+    ctx.stroke()
+  }
+
+  const redrawCanvasFromStack = () => {
+    const ctx = contextRef.current
+    if (!ctx) return
+    ctx.fillStyle = "#ffffff"
+    ctx.fillRect(
+      0,
+      0,
+      GAME_CONSTANTS.CANVAS_DEFAULT_WIDTH,
+      GAME_CONSTANTS.CANVAS_DEFAULT_HEIGHT,
+    )
+    strokeHistoryStack.current.forEach((s) => drawRawStroke(ctx, s))
+  }
 
   useEffect(() => {
     const canvas = canvasRef.current!
@@ -60,17 +88,42 @@ export const Canvas: React.FC<CanvasProps> = ({
       GAME_CONSTANTS.CANVAS_DEFAULT_HEIGHT,
     )
 
-    initialHistory.forEach((stroke) =>
-      drawRawStroke(contextRef.current, stroke),
-    )
-    onStrokeReceivedRef.current = (stroke: StrokePayload) =>
-      drawRawStroke(contextRef.current, stroke)
+    strokeHistoryStack.current = [...initialHistory]
+    redrawCanvasFromStack()
+
+    onStrokeReceivedRef.current = (stroke: StrokePayload) => {
+      if (stroke.tool === "undo") {
+        strokeHistoryStack.current.pop()
+        redrawCanvasFromStack()
+      } else if (stroke.tool === "clear") {
+        strokeHistoryStack.current = []
+        redrawCanvasFromStack()
+      } else {
+        strokeHistoryStack.current.push(stroke)
+        drawRawStroke(contextRef.current, stroke)
+      }
+    }
   }, [initialHistory, onStrokeReceivedRef])
+
+  const triggerUndoAction = () => {
+    if (!isDrawer) return
+    strokeHistoryStack.current.pop()
+    redrawCanvasFromStack()
+    onStrokeEmitted({ points: [], color: "", size: 0, tool: "undo" })
+  }
+
+  const triggerClearAction = () => {
+    if (!isDrawer) return
+    strokeHistoryStack.current = []
+    redrawCanvasFromStack()
+    onStrokeEmitted({ points: [], color: "", size: 0, tool: "clear" })
+  }
 
   const startTracking = ({ nativeEvent }: React.MouseEvent) => {
     if (!isDrawer) return
     const { offsetX, offsetY } = nativeEvent
-    contextRef.current!.strokeStyle = brushColor
+    contextRef.current!.strokeStyle =
+      activeTool === "eraser" ? "#ffffff" : brushColor
     contextRef.current!.lineWidth = brushSize
     contextRef.current!.beginPath()
     contextRef.current!.moveTo(offsetX, offsetY)
@@ -89,11 +142,14 @@ export const Canvas: React.FC<CanvasProps> = ({
   const stopTracking = () => {
     if (!isDrawing || !isDrawer) return
     setIsDrawing(false)
-    onStrokeEmitted({
+    const newStroke: StrokePayload = {
       points: localPoints.current,
       color: brushColor,
       size: brushSize,
-    })
+      tool: activeTool,
+    }
+    strokeHistoryStack.current.push(newStroke)
+    onStrokeEmitted(newStroke)
     localPoints.current = []
   }
 
@@ -110,24 +166,52 @@ export const Canvas: React.FC<CanvasProps> = ({
         <div
           style={{
             display: "flex",
-            gap: "15px",
+            gap: "10px",
             marginBottom: "10px",
             alignItems: "center",
+            flexWrap: "wrap",
           }}
         >
           <input
             type="color"
             value={brushColor}
             onChange={(e) => setBrushColor(e.target.value)}
+            disabled={activeTool === "eraser"}
           />
           <input
             type="range"
             min="2"
-            max="12"
+            max="25"
             value={brushSize}
             onChange={(e) => setBrushSize(Number(e.target.value))}
           />
-          <span style={{ fontSize: "12px" }}>Size: {brushSize}px</span>
+          <button
+            onClick={() => setActiveTool("pen")}
+            style={{
+              background: activeTool === "pen" ? "#ddd" : "#fff",
+              padding: "4px 8px",
+            }}
+          >
+            ✏️ Pen
+          </button>
+          <button
+            onClick={() => setActiveTool("eraser")}
+            style={{
+              background: activeTool === "eraser" ? "#ddd" : "#fff",
+              padding: "4px 8px",
+            }}
+          >
+            🧽 Eraser
+          </button>
+          <button onClick={triggerUndoAction} style={{ padding: "4px 8px" }}>
+            ↩️ Undo
+          </button>
+          <button
+            onClick={triggerClearAction}
+            style={{ padding: "4px 8px", color: "red" }}
+          >
+            🗑️ Clear
+          </button>
         </div>
       )}
       <canvas

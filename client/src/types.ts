@@ -7,6 +7,7 @@ export interface StrokePayload {
   points: Point[]
   color: string
   size: number
+  tool: "pen" | "eraser" | "undo" | "clear" | "fill"
 }
 
 export interface PlayerData {

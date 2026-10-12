@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import { Canvas } from "./Canvas"
 import {
   type PlayerData,
@@ -10,6 +10,8 @@ import {
 export default function App() {
   const [name, setName] = useState("")
   const [roomId, setRoomId] = useState(GAME_CONSTANTS.DEFAULT_ROOM_ID)
+  const [roundsInput, setRoundsInput] = useState(3)
+  const [drawTimeInput, setDrawTimeInput] = useState(60)
   const [joined, setJoined] = useState(false)
   const [playerId] = useState(
     () => "usr_" + Math.random().toString(36).substring(2, 9),
@@ -30,6 +32,39 @@ export default function App() {
     null,
   )
 
+  const runStrokeReplaySimulation = (fullReplayData: StrokePayload[]) => {
+    setGameStatus("replaying")
+
+    if (canvasCallbackRef.current) {
+      canvasCallbackRef.current({
+        tool: "clear",
+        points: [],
+        color: "",
+        size: 0,
+      })
+    }
+
+    let index = 0
+    const playNextStroke = () => {
+      if (index >= fullReplayData.length) {
+        setGameStatus("ended")
+        return
+      }
+
+      if (canvasCallbackRef.current) {
+        canvasCallbackRef.current(fullReplayData[index])
+      }
+      index++
+      setTimeout(playNextStroke, 80)
+    }
+
+    if (fullReplayData.length > 0) {
+      playNextStroke()
+    } else {
+      setGameStatus("ended")
+    }
+  }
+
   useEffect(() => {
     if (!joined) return
 
@@ -37,7 +72,17 @@ export default function App() {
     wsRef.current = socket
 
     socket.onopen = () => {
-      socket.send(JSON.stringify({ type: "join_room", roomId, playerId, name }))
+      socket.send(
+        JSON.stringify({
+          type: "join_room",
+          roomId,
+          playerId,
+          name,
+          payload: {
+            hostSettings: { rounds: roundsInput, drawTime: drawTimeInput },
+          },
+        }),
+      )
     }
 
     socket.onmessage = (event) => {
@@ -89,11 +134,21 @@ export default function App() {
             },
           ])
           break
+        case "game_over":
+          setMessages((prev) => [
+            ...prev,
+            {
+              system: true,
+              text: "🏁 Game Over! Commencing stroke replays...",
+            },
+          ])
+          runStrokeReplaySimulation(data.payload.replay)
+          break
       }
     }
 
     return () => socket.close()
-  }, [joined])
+  }, [joined, roomId, playerId, name, roundsInput, drawTimeInput])
 
   const fireChatMessage = (e: React.FormEvent) => {
     e.preventDefault()
@@ -113,13 +168,14 @@ export default function App() {
     return (
       <div
         style={{
-          padding: "40px",
+          padding: "30px",
           fontFamily: "Segoe UI",
           textAlign: "center",
           maxWidth: "350px",
-          margin: "80px auto",
+          margin: "50px auto",
           border: "1px solid #ccc",
           borderRadius: "8px",
+          background: "#fdfdfd",
         }}
       >
         <h3>🎮 Pictionary Studio</h3>
@@ -135,18 +191,59 @@ export default function App() {
           placeholder="Room ID"
           value={roomId}
           onChange={(e) => setRoomId(e.target.value)}
-          style={{ width: "90%", padding: "8px", marginBottom: "20px" }}
+          style={{ width: "90%", padding: "8px", marginBottom: "15px" }}
         />
+
+        <label
+          style={{
+            fontSize: "12px",
+            textAlign: "left",
+            display: "block",
+            margin: "5px 0 2px 15px",
+          }}
+        >
+          Number of Rounds:
+        </label>
+        <input
+          type="number"
+          min="1"
+          max="10"
+          value={roundsInput}
+          onChange={(e) => setRoundsInput(Number(e.target.value))}
+          style={{ width: "90%", padding: "8px", marginBottom: "10px" }}
+        />
+
+        <label
+          style={{
+            fontSize: "12px",
+            textAlign: "left",
+            display: "block",
+            margin: "5px 0 2px 15px",
+          }}
+        >
+          Draw Time (seconds):
+        </label>
+        <input
+          type="number"
+          min="20"
+          max="180"
+          value={drawTimeInput}
+          onChange={(e) => setDrawTimeInput(Number(e.target.value))}
+          style={{ width: "90%", padding: "8px", marginBottom: "25px" }}
+        />
+
         <button
+          type="button"
           onClick={() => name.trim() && setJoined(true)}
           style={{
             width: "96%",
-            padding: "10px",
+            padding: "12px",
             background: "#28a745",
             color: "#fff",
             border: "none",
             borderRadius: "4px",
             cursor: "pointer",
+            fontWeight: "bold",
           }}
         >
           Enter Lounge
@@ -178,13 +275,14 @@ export default function App() {
         <h4>Players Roster</h4>
         {players.map((p) => (
           <div key={p.id} style={{ marginBottom: "10px", fontSize: "14px" }}>
-            👤 {p.name} {p.is_host && "⭐"} — <strong>{p.score}</strong>{" "}
+            {p.name} {p.is_host && "⭐"} — <strong>{p.score}</strong>{" "}
             {p.id === drawerId && "✏️"} {p.is_correct && "✅"}
           </div>
         ))}
         {gameStatus === "lobby" &&
           players.find((p) => p.id === playerId)?.is_host && (
             <button
+              type="button"
               onClick={() =>
                 wsRef.current?.send(
                   JSON.stringify({ type: "start_game", roomId, playerId }),
@@ -222,7 +320,7 @@ export default function App() {
               fontWeight: "bold",
             }}
           >
-            {headerHint}
+            {gameStatus === "replaying" ? "🎬 REPLAYING MATCH" : headerHint}
           </div>
         </div>
 
@@ -240,6 +338,7 @@ export default function App() {
             {choices.map((w) => (
               <button
                 key={w}
+                type="button"
                 onClick={() =>
                   wsRef.current?.send(
                     JSON.stringify({
@@ -282,10 +381,18 @@ export default function App() {
           border: "1px solid #ddd",
           borderRadius: "6px",
           padding: "10px",
+          background: "#fdfdfd",
         }}
       >
         <h4>Chat & Guesses</h4>
-        <div style={{ flex: 1, overflowY: "auto", fontSize: "13px" }}>
+        <div
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            fontSize: "13px",
+            marginBottom: "10px",
+          }}
+        >
           {messages.map((m, idx) => (
             <div
               key={idx}
@@ -303,9 +410,18 @@ export default function App() {
             type="text"
             value={chatBox}
             onChange={(e) => setChatBox(e.target.value)}
-            disabled={isDrawer && gameStatus === "drawing"}
-            placeholder={isDrawer ? "You are drawing!" : "Type guess..."}
-            style={{ width: "90%", padding: "6px" }}
+            disabled={
+              (isDrawer && gameStatus === "drawing") ||
+              gameStatus === "replaying"
+            }
+            placeholder={
+              isDrawer
+                ? "You are drawing!"
+                : gameStatus === "replaying"
+                  ? "Viewing replay..."
+                  : "Type guess..."
+            }
+            style={{ width: "92%", padding: "8px" }}
           />
         </form>
       </div>
